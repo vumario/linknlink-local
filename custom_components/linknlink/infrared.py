@@ -10,7 +10,7 @@ import logging
 
 from linknlink.exceptions import LinknLinkException
 
-from homeassistant.components.infrared import InfraredCommand, InfraredEntity
+from homeassistant.components.infrared import InfraredCommand, InfraredEmitterEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -33,7 +33,7 @@ async def async_setup_entry(
     async_add_entities([LinknLinkInfraredEmitter(coordinator)], False)
 
 
-class LinknLinkInfraredEmitter(LinknLinkEntity, InfraredEntity):
+class LinknLinkInfraredEmitter(LinknLinkEntity, InfraredEmitterEntity):
     """LinknLink IR transmitter exposed to the HA infrared platform."""
 
     _attr_name = "Infrared"
