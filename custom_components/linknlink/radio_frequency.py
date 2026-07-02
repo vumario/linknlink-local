@@ -20,6 +20,7 @@ from homeassistant.components.radio_frequency import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import codec
@@ -66,18 +67,22 @@ class LinknLinkRadioFrequencyTransmitter(LinknLinkEntity, RadioFrequencyTransmit
 
     async def async_send_command(self, command: RadioFrequencyCommand) -> None:
         if command.modulation is not ModulationType.OOK:
-            raise ValueError(
-                f"unsupported modulation {command.modulation!r}; "
+            raise HomeAssistantError(
+                f"Unsupported modulation {command.modulation!r}; "
                 "LinknLink hardware is OOK-only"
             )
         timings = list(command.get_raw_timings())
         if not timings:
-            raise ValueError("radio frequency command has no timings")
-        blob = codec.encode_rf(timings, frequency_hz=command.frequency)
+            raise HomeAssistantError("Radio frequency command has no timings")
+        try:
+            blob = codec.encode_rf(timings, frequency_hz=command.frequency)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
         try:
             await self.coordinator.async_request(
                 self.coordinator.api.send_data, blob
             )
         except (LinknLinkException, OSError) as err:
-            _LOGGER.error("Failed to send radio frequency command: %s", err)
-            raise
+            raise HomeAssistantError(
+                f"Failed to send radio frequency command: {err}"
+            ) from err

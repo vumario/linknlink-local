@@ -13,6 +13,7 @@ from linknlink.exceptions import LinknLinkException
 from homeassistant.components.infrared import InfraredCommand, InfraredEmitterEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import codec
@@ -45,12 +46,13 @@ class LinknLinkInfraredEmitter(LinknLinkEntity, InfraredEmitterEntity):
     async def async_send_command(self, command: InfraredCommand) -> None:
         timings = list(command.get_raw_timings())
         if not timings:
-            raise ValueError("infrared command has no timings")
+            raise HomeAssistantError("Infrared command has no timings")
         blob = codec.encode_ir(timings)
         try:
             await self.coordinator.async_request(
                 self.coordinator.api.send_data, blob
             )
         except (LinknLinkException, OSError) as err:
-            _LOGGER.error("Failed to send infrared command: %s", err)
-            raise
+            raise HomeAssistantError(
+                f"Failed to send infrared command: {err}"
+            ) from err
