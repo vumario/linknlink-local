@@ -437,7 +437,10 @@ class ControlledDeviceSubentryFlowHandler(ConfigSubentryFlow):
         task = self._learn_task
         self._learn_task = None
         if task is None or self._pending_command is None:
-            _LOGGER.error("Learning result reached without pending command state")
+            _LOGGER.error(
+                "Learning result reached without pending command state. "
+                "This may indicate a race condition or premature flow progression."
+            )
             self._pending_command = None
             return await self.async_step_learn(errors={"base": "learn_failed"})
         try:

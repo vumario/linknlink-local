@@ -143,7 +143,7 @@ def _load_module(module_name: str, file_name: str, predefs: dict | None = None):
     return module
 
 
-def test_async_step_dhcp_uses_async_set_device():
+def test_dhcp_flow_calls_async_set_device():
     _clear_test_modules()
     _install_common_homeassistant_stubs()
     _install_common_package_stubs()
@@ -228,7 +228,7 @@ def test_async_step_dhcp_uses_async_set_device():
     assert result == {"type": "auth"}
 
 
-def test_async_setup_entry_stores_coordinator_before_refresh():
+def test_coordinator_stored_before_refresh():
     _clear_test_modules()
     _install_common_package_stubs()
     _new_module("homeassistant")
@@ -302,7 +302,7 @@ def test_async_setup_entry_stores_coordinator_before_refresh():
     assert call_order == ["setup", "refresh", "forward"]
 
 
-def test_async_step_learn_result_handles_missing_pending_command():
+def test_learn_result_handles_missing_pending_command():
     _clear_test_modules()
     _install_common_homeassistant_stubs()
     _install_common_package_stubs()
@@ -375,7 +375,7 @@ def test_async_step_learn_result_handles_missing_pending_command():
     assert flow._learn_task is None
 
 
-def test_async_send_command_uses_safe_default_for_toggle_flags():
+def test_send_command_defaults_missing_toggle_flags():
     _clear_test_modules()
     _install_common_package_stubs()
     _new_module("homeassistant")
