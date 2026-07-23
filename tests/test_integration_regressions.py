@@ -302,7 +302,7 @@ def test_coordinator_stored_before_refresh():
     assert call_order == ["setup", "refresh", "forward"]
 
 
-def test_learn_result_handles_missing_pending_command():
+def test_learn_result_with_missing_pending_command_returns_error():
     _clear_test_modules()
     _install_common_homeassistant_stubs()
     _install_common_package_stubs()
@@ -375,7 +375,7 @@ def test_learn_result_handles_missing_pending_command():
     assert flow._learn_task is None
 
 
-def test_send_command_defaults_missing_toggle_flags():
+def test_send_command_initializes_missing_toggle_flags():
     _clear_test_modules()
     _install_common_package_stubs()
     _new_module("homeassistant")
