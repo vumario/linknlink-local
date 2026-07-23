@@ -16,6 +16,7 @@ LEARNING_TIMEOUT = 30.0
 POLL_INTERVAL = 1.0
 MAX_POLL_INTERVAL = 2.0
 BACKOFF_WINDOW = 5.0
+MIN_POLL_MARGIN = 0.01
 
 
 def _next_poll_interval(
@@ -31,7 +32,7 @@ def _next_poll_interval(
     """
     remaining = max(0.0, deadline - now)
     if remaining <= base:
-        return max(0.0, remaining - 0.01)
+        return max(0.0, remaining - MIN_POLL_MARGIN)
     if remaining < BACKOFF_WINDOW:
         return min(maximum, base * 2)
     return base

@@ -150,6 +150,7 @@ class eremote(Device):
     Port = 61212
     PID_CACHE_TTL = 30
     SENSOR_CACHE_TTL = 2
+    TIMEOUT_INTERVAL = 60
     LOOPBACK_BIND_IP = "127.0.0.1"
 
     def __init__(self, *args, **kwargs) -> None:
@@ -238,8 +239,11 @@ class eremote(Device):
 
     def sendTimeout(self) -> bytes:
         """Send a packet to the device."""
-        while not self._stop_event.wait(60):
-            data = (("""{"port":%s, "timeout":60}""") % (self.Port)).encode('utf-8')
+        while not self._stop_event.wait(self.TIMEOUT_INTERVAL):
+            data = (
+                ("""{"port":%s, "timeout":%s}""")
+                % (self.Port, self.TIMEOUT_INTERVAL)
+            ).encode("utf-8")
             packet = struct.pack("<I", 20000) + data
             # packet = struct.pack("<HI", len(data) + 4, 20000) + data
             try: 
@@ -337,6 +341,10 @@ class eremote(Device):
                         json_string = resp.decode('utf-8')
                         json_object = json.loads(json_string)
                     except Exception:
+                        self._did_snapshot_cache[did_key] = (
+                            now + self.SENSOR_CACHE_TTL,
+                            {},
+                        )
                         continue
                     # print(json_object)
                     self._did_snapshot_cache[did_key] = (
@@ -352,7 +360,6 @@ class eremote(Device):
         if big_dict:
             self._last_sensor_snapshot = dict(big_dict)
             self._last_sensor_snapshot_expires = now + self.SENSOR_CACHE_TTL
-            return big_dict
         return big_dict
 
     def check_temperature(self) -> float:

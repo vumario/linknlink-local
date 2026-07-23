@@ -46,7 +46,7 @@ class LinknLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._sensor_cache_ttl = 1.0
         self._sensor_cache_expires_at = 0.0
         self._last_sensor_data: dict[str, Any] = {}
-        self._last_sensor_data_at = 0.0
+        self._last_sensor_data_at: float | None = None
 
     @property
     def available(self) -> bool | None:
@@ -153,7 +153,7 @@ class LinknLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.error("Failed to execute function: %s", e)
             except (NetworkTimeoutError, OSError, LinknLinkException) as err:
                 _LOGGER.debug("Sensor update failed for %s: %s", self.api.host[0], err)
-                if self._last_sensor_data and self._last_sensor_data_at:
+                if self._last_sensor_data and self._last_sensor_data_at is not None:
                     stale_for = now - self._last_sensor_data_at
                     if stale_for > self.update_interval.total_seconds() * 2:
                         _LOGGER.warning(
