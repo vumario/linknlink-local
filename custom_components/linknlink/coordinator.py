@@ -25,6 +25,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import DEFAULT_PORT, DOMAIN, get_domains
 
 _LOGGER = logging.getLogger(__name__)
+# Mark cached data as stale after this many missed update intervals.
 STALE_DATA_THRESHOLD_MULTIPLIER = 2
 
 

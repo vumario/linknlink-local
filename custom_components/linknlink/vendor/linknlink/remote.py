@@ -153,6 +153,7 @@ class eremote(Device):
     ERROR_SENSOR_CACHE_TTL = 0.5
     TIMEOUT_INTERVAL = 60
     LOOPBACK_BIND_IP = "127.0.0.1"
+    # Probe up to 100 consecutive ports before failing fast on startup.
     MAX_PORT_BIND_ATTEMPTS = 100
 
     def __init__(self, *args, **kwargs) -> None:
@@ -207,7 +208,7 @@ class eremote(Device):
                 break
             except OSError as err:
                 if err.errno == socket.errno.EADDRINUSE:
-                    if self.Port >= 65535:
+                    if self.Port > 65535:
                         udp_server_socket.close()
                         raise
                     self.Port += 1

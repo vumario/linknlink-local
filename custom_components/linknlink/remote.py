@@ -56,6 +56,7 @@ FLAG_STORAGE_VERSION = 1
 
 CODE_SAVE_DELAY = 15
 FLAG_SAVE_DELAY = 15
+# Allow the RF receiver to settle after sweep before packet capture.
 RF_CAPTURE_SETTLE_DELAY = 1.0
 
 COMMAND_SCHEMA = vol.Schema(
