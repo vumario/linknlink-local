@@ -280,7 +280,7 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
                 await asyncio.sleep(delay)
 
             if len(codes) > 1:
-                code = codes[self._flags[subdevice]]
+                code = codes[self._flags.get(subdevice, 0)]
             else:
                 code = codes[0]
 
@@ -291,7 +291,7 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
                 break
 
             if len(codes) > 1:
-                self._flags[subdevice] ^= 1
+                self._flags[subdevice] = self._flags.get(subdevice, 0) ^ 1
             at_least_one_sent = True
 
         if at_least_one_sent:
