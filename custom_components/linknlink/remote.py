@@ -56,6 +56,7 @@ FLAG_STORAGE_VERSION = 1
 
 CODE_SAVE_DELAY = 15
 FLAG_SAVE_DELAY = 15
+RF_CAPTURE_SETTLE_DELAY = 1.0
 
 COMMAND_SCHEMA = vol.Schema(
     {
@@ -407,7 +408,7 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
                 self.hass, notification_id="sweep_frequency"
             )
 
-        await asyncio.sleep(1)
+        await asyncio.sleep(RF_CAPTURE_SETTLE_DELAY)
 
         persistent_notification.async_create(
             self.hass,

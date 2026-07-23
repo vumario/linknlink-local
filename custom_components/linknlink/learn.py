@@ -31,7 +31,7 @@ def _next_poll_interval(
     """
     remaining = max(0.0, deadline - now)
     if remaining <= base:
-        return remaining
+        return max(0.0, remaining - 0.01)
     if remaining < BACKOFF_WINDOW:
         return min(maximum, base * 2)
     return base

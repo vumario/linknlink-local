@@ -150,6 +150,7 @@ class eremote(Device):
     Port = 61212
     PID_CACHE_TTL = 30
     SENSOR_CACHE_TTL = 2
+    LOOPBACK_BIND_IP = "127.0.0.1"
 
     def __init__(self, *args, **kwargs) -> None:
         """Initialize an eRemote device."""
@@ -253,7 +254,7 @@ class eremote(Device):
                 probe.connect((self.host[0], self.host[1]))
                 return probe.getsockname()[0]
         except OSError:
-            return "0.0.0.0"
+            return self.LOOPBACK_BIND_IP
 
     def _ensure_background_workers(self) -> None:
         """Ensure UDP workers are running once."""
@@ -353,10 +354,6 @@ class eremote(Device):
             self._last_sensor_snapshot_expires = now + self.SENSOR_CACHE_TTL
             return big_dict
         return big_dict
-
-    def __del__(self) -> None:
-        """Best-effort cleanup for background workers."""
-        self.stop_background_workers()
 
     def check_temperature(self) -> float:
         """Return the temperature."""
