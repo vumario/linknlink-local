@@ -5,6 +5,7 @@ from contextlib import suppress
 from datetime import timedelta
 from functools import partial
 import logging
+import time
 from typing import Any
 
 from .vendor import linknlink as llk
@@ -24,6 +25,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import DEFAULT_PORT, DOMAIN, get_domains
 
 _LOGGER = logging.getLogger(__name__)
+# Mark cached data as stale after this many missed update intervals.
+STALE_DATA_THRESHOLD_MULTIPLIER = 2
 
 
 class LinknLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -42,6 +45,10 @@ class LinknLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.fw_version: int | None = None
         self.authorized: bool | None = None
+        self._sensor_cache_ttl = 1.0
+        self._sensor_cache_expires_at = 0.0
+        self._last_sensor_data: dict[str, Any] = {}
+        self._last_sensor_data_at: float | None = None
 
     @property
     def available(self) -> bool | None:
@@ -134,9 +141,31 @@ class LinknLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from the device."""
         if get_domains(self.api.type) & {Platform.BINARY_SENSOR, Platform.SENSOR}:
+            now = time.monotonic()
+            if now < self._sensor_cache_expires_at:
+                return dict(self._last_sensor_data)
             try:
                 data = await self.async_request(self.api.check_sensors)
+                if data:
+                    self._last_sensor_data = data
+                    self._last_sensor_data_at = now
+                    self._sensor_cache_expires_at = now + self._sensor_cache_ttl
                 return data
             except AttributeError as e:
                 _LOGGER.error("Failed to execute function: %s", e)
+            except (NetworkTimeoutError, OSError, LinknLinkException) as err:
+                _LOGGER.debug("Sensor update failed for %s: %s", self.api.host[0], err)
+                if self._last_sensor_data and self._last_sensor_data_at is not None:
+                    stale_for = now - self._last_sensor_data_at
+                    if (
+                        stale_for
+                        > self.update_interval.total_seconds()
+                        * STALE_DATA_THRESHOLD_MULTIPLIER
+                    ):
+                        _LOGGER.warning(
+                            "Using stale sensor data for %s (age %.1fs)",
+                            self.api.host[0],
+                            stale_for,
+                        )
+                return dict(self._last_sensor_data)
         return {}

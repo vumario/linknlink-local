@@ -19,6 +19,7 @@ from .const import (
 from .protocol import Datetime
 
 HelloResponse = t.Tuple[int, t.Tuple[str, int], str, str, bool]
+ERROR_CODE_NETWORK_TIMEOUT = -4000
 
 
 def scan(
@@ -49,7 +50,7 @@ def scan(
     packet[0x20:0x22] = checksum.to_bytes(2, "little")
 
     start_time = time.time()
-    discovered = []
+    discovered = set()
 
     try:
         while (time.time() - start_time) < timeout:
@@ -66,9 +67,10 @@ def scan(
                 devtype = resp[0x34] | resp[0x35] << 8
                 mac = resp[0x3A:0x40][::-1]
 
-                if (host, mac, devtype) in discovered:
+                key = (host, mac, devtype)
+                if key in discovered:
                     continue
-                discovered.append((host, mac, devtype))
+                discovered.add(key)
 
                 name = resp[0x40:].split(b"\x00")[0].decode()
                 is_locked = bool(resp[0x7F])
@@ -125,6 +127,7 @@ class Device:
         self.id = 0
         self.type = self.TYPE  # For backwards compatibility.
         self.lock = threading.Lock()
+        self._socket = None
         self.cb = cb
 
         self.aes = None
@@ -208,7 +211,7 @@ class Device:
 
         except StopIteration as err:
             raise e.NetworkTimeoutError(
-                -4000,
+                ERROR_CODE_NETWORK_TIMEOUT,
                 "Network timeout",
                 f"No response received within {self.timeout}s",
             ) from err
@@ -295,25 +298,37 @@ class Device:
         checksum = sum(packet, 0xBEAF) & 0xFFFF
         packet[0x20:0x22] = checksum.to_bytes(2, "little")
 
-        with self.lock and socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as conn:
+        with self.lock:
             timeout = self.timeout
             start_time = time.time()
 
             while True:
                 time_left = timeout - (time.time() - start_time)
-                conn.settimeout(min(DEFAULT_RETRY_INTVL, time_left))
-                conn.sendto(packet, self.host)
+                if time_left <= 0:
+                    self._close_socket()
+                    raise e.NetworkTimeoutError(
+                        ERROR_CODE_NETWORK_TIMEOUT,
+                        "Network timeout",
+                        f"No response received within {timeout}s",
+                    )
 
+                conn = self._get_socket()
+                conn.settimeout(min(DEFAULT_RETRY_INTVL, time_left))
                 try:
+                    conn.sendto(packet, self.host)
                     resp = conn.recvfrom(2048)[0]
                     break
                 except socket.timeout as err:
                     if (time.time() - start_time) > timeout:
+                        self._close_socket()
                         raise e.NetworkTimeoutError(
-                            -4000,
+                            ERROR_CODE_NETWORK_TIMEOUT,
                             "Network timeout",
                             f"No response received within {timeout}s",
                         ) from err
+                except OSError:
+                    self._close_socket()
+                    raise
 
         if len(resp) < 0x30:
             raise e.DataValidationError(
@@ -333,6 +348,18 @@ class Device:
             )
 
         return resp
+
+    def _get_socket(self) -> socket.socket:
+        """Return an open UDP socket for this device."""
+        if self._socket is None:
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        return self._socket
+
+    def _close_socket(self) -> None:
+        """Close the cached UDP socket."""
+        if self._socket is not None:
+            self._socket.close()
+            self._socket = None
 
     def build_cmdstu(self, cmd: int, payload: bytes = b"") -> bytes:
         """Build a command to send."""
