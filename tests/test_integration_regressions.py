@@ -280,7 +280,8 @@ def test_coordinator_stored_before_refresh():
         def add_update_listener(self, listener):
             return listener
 
-        def async_on_unload(self, _listener):
+        def async_on_unload(self, listener):
+            assert listener is not None
             return None
 
     hass = SimpleNamespace(data={}, config_entries=FakeConfigEntries())

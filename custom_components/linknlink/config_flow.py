@@ -439,7 +439,7 @@ class ControlledDeviceSubentryFlowHandler(ConfigSubentryFlow):
         if task is None or self._pending_command is None:
             _LOGGER.error(
                 "Learning result callback invoked without active command state. "
-                "The learning task or pending command was unexpectedly cleared "
+                "The learning task or pending command was cleared unexpectedly "
                 "before completion."
             )
             return await self.async_step_learn(errors={"base": "learn_failed"})
