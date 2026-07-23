@@ -5,6 +5,7 @@ from contextlib import suppress
 from datetime import timedelta
 from functools import partial
 import logging
+import time
 from typing import Any
 
 from .vendor import linknlink as llk
@@ -42,6 +43,9 @@ class LinknLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self.fw_version: int | None = None
         self.authorized: bool | None = None
+        self._sensor_cache_ttl = 1.0
+        self._sensor_cache_expires_at = 0.0
+        self._last_sensor_data: dict[str, Any] = {}
 
     @property
     def available(self) -> bool | None:
@@ -134,9 +138,19 @@ class LinknLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from the device."""
         if get_domains(self.api.type) & {Platform.BINARY_SENSOR, Platform.SENSOR}:
+            now = time.monotonic()
+            if now < self._sensor_cache_expires_at:
+                return dict(self._last_sensor_data)
             try:
                 data = await self.async_request(self.api.check_sensors)
+                if data:
+                    self._last_sensor_data = data
+                    self._sensor_cache_expires_at = now + self._sensor_cache_ttl
                 return data
             except AttributeError as e:
                 _LOGGER.error("Failed to execute function: %s", e)
+            except (NetworkTimeoutError, OSError, LinknLinkException) as err:
+                _LOGGER.debug("Sensor update failed for %s: %s", self.api.host[0], err)
+                if self._last_sensor_data:
+                    return dict(self._last_sensor_data)
         return {}

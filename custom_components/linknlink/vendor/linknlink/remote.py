@@ -148,6 +148,8 @@ class eremote(Device):
     TYPE = "EREMOTE"
     UdpFlag = False
     Port = 61212
+    PID_CACHE_TTL = 30
+    SENSOR_CACHE_TTL = 2
     
     def _send(self, command: int, data: bytes = b"") -> bytes:
         """Send a packet to the device."""
@@ -173,44 +175,52 @@ class eremote(Device):
         return res[2]
     
     def startUdpServer(self):
-        # 创建一个 UDP socket
+        """Start a UDP server for callback events."""
         udp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-        # 绑定服务器地址和端口
-        server_address = ('', self.Port)  # 绑定到所有网络接口
-        try:
-            udp_server_socket.bind(server_address)
-        except OSError as e:
-            if e.errno == socket.errno.EADDRINUSE:
-                # print(f"端口{self.Port}已被占用")
-                self.Port += 1
-                return self.startUdpServer()
-            else:
-                raise e
-
-        # print(f"UDP 服务器已在{self.Port}启动，等待客户端连接...")
-
-        # 接收数据并发送响应
         while True:
-            # 接收数据
-            data, client_address = udp_server_socket.recvfrom(1024)
+            server_address = ("", self.Port)
+            try:
+                udp_server_socket.bind(server_address)
+                break
+            except OSError as err:
+                if err.errno == socket.errno.EADDRINUSE:
+                    self.Port += 1
+                    continue
+                udp_server_socket.close()
+                raise
+
+        udp_server_socket.settimeout(1)
+        self._udp_server_socket = udp_server_socket
+
+        while not self._stop_event.is_set():
+            try:
+                data, client_address = udp_server_socket.recvfrom(1024)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+
             if self.cb:
                 try:
-                    data_dict = json.loads(data.decode('utf-8'))
+                    data_dict = json.loads(data.decode("utf-8"))
                     for key, value in data_dict.items():
                         if key.startswith("rmkey") and value != 0:
-                            # print(f"键: {key}, 值: {value}")
                             self.cb(key)
-                except Exception as e:
-                    print(e)
+                except Exception as err:
+                    print(err)
 
-            # 发送响应
-            response = "ok"
-            udp_server_socket.sendto(response.encode('utf-8'), client_address)
+            try:
+                udp_server_socket.sendto(b"ok", client_address)
+            except OSError:
+                break
+
+        udp_server_socket.close()
+        if self._udp_server_socket is udp_server_socket:
+            self._udp_server_socket = None
 
     def sendTimeout(self) -> bytes:
         """Send a packet to the device."""
-        while True:
+        while not self._stop_event.wait(60):
             data = (("""{"port":%s, "timeout":60}""") % (self.Port)).encode('utf-8')
             packet = struct.pack("<I", 20000) + data
             # packet = struct.pack("<HI", len(data) + 4, 20000) + data
@@ -218,10 +228,44 @@ class eremote(Device):
                 resp = self.send_packet(0x6A, packet)
             except Exception as e:
                 print(e)
-            time.sleep(60)
+
+    def _ensure_background_workers(self) -> None:
+        """Ensure UDP workers are running once."""
+        if self.UdpFlag:
+            return
+        with self._thread_lock:
+            if self.UdpFlag:
+                return
+            self._stop_event.clear()
+            self._udp_thread = threading.Thread(
+                target=self.startUdpServer,
+                name=f"linknlink-udp-{self.mac.hex()}",
+                daemon=True,
+            )
+            self._timeout_thread = threading.Thread(
+                target=self.sendTimeout,
+                name=f"linknlink-timeout-{self.mac.hex()}",
+                daemon=True,
+            )
+            self._udp_thread.start()
+            self._timeout_thread.start()
+            self.UdpFlag = True
+
+    def stop_background_workers(self) -> None:
+        """Stop UDP background workers and close socket."""
+        with self._thread_lock:
+            self._stop_event.set()
+            if self._udp_server_socket is not None:
+                self._udp_server_socket.close()
+                self._udp_server_socket = None
+            self.UdpFlag = False
     
     def getalldev(self) -> dict:
         """Return the all devices."""
+        now = time.monotonic()
+        if self._pid_cache is not None and now < self._pid_cache_expires:
+            return self._pid_cache
+
         resp = self._sendV2(0x0b0e, """{"count":16,"index":0,}""".encode('utf-8')) # max 16dev
         try:
             json_string = resp.decode('utf-8')
@@ -237,37 +281,59 @@ class eremote(Device):
                 pid_to_did_map[pid].append(did)
             else:
                 pid_to_did_map[pid] = [did]
+        self._pid_cache = pid_to_did_map
+        self._pid_cache_expires = now + self.PID_CACHE_TTL
         return pid_to_did_map
     
     def check_sensors(self) -> dict:
         """Return the state of the sensors."""
-        if not self.UdpFlag:
-            self.UdpFlag = True
-            # 启动一个线程来运行 UDP 服务器
-            thread = threading.Thread(target=self.startUdpServer)
-            thread.start()
-            # 周期向客户端发送超时时间
-            thread2 = threading.Thread(target=self.sendTimeout)
-            thread2.start()
+        self._ensure_background_workers()
         big_dict = {}
+        now = time.monotonic()
+
+        if now < self._last_sensor_snapshot_expires:
+            return dict(self._last_sensor_snapshot)
+
         pid_to_did_map = self.getalldev()
         # print(pid_to_did_map)
         for pid in PID_HUMITURE, PID_DOORSENSOR, PID_REMOTE:
             if pid in pid_to_did_map:
                 for did in pid_to_did_map[pid]:
+                    did_key = (pid, did)
+                    cache_entry = self._did_snapshot_cache.get(did_key)
+                    if cache_entry and now < cache_entry[0]:
+                        big_dict.update(cache_entry[1])
+                        continue
+
                     resp = self._sendV2(0x0b01, ("""{"did":"%s"}"""%(did)).encode('utf-8'))
                     try:
                         json_string = resp.decode('utf-8')
                         json_object = json.loads(json_string)
                     except Exception:
-                        return {}
+                        continue
                     # print(json_object)
+                    self._did_snapshot_cache[did_key] = (
+                        now + self.SENSOR_CACHE_TTL,
+                        json_object,
+                    )
                     big_dict.update(json_object)
         if "envtemp" in big_dict:
             big_dict["envtemp"] = round(float(big_dict["envtemp"])/100, 2)
         if "envhumid" in big_dict:
             big_dict["envhumid"] = round(float(big_dict["envhumid"])/100, 2)
+
+        if big_dict:
+            self._last_sensor_snapshot = dict(big_dict)
+            self._last_sensor_snapshot_expires = now + self.SENSOR_CACHE_TTL
+            return big_dict
+
+        if now < self._last_sensor_snapshot_expires:
+            return dict(self._last_sensor_snapshot)
         return big_dict
+
+    def __del__(self) -> None:
+        """Best-effort cleanup for background workers."""
+        self.stop_background_workers()
 
     def check_temperature(self) -> float:
         """Return the temperature."""
@@ -316,3 +382,18 @@ class eremote(Device):
     def check_data(self) -> bytes:
         """Return the last captured code."""
         return self._send(0x4)
+    def __init__(self, *args, **kwargs) -> None:
+        """Initialize an eRemote device."""
+        super().__init__(*args, **kwargs)
+        self.UdpFlag = False
+        self.Port = 61212
+        self._stop_event = threading.Event()
+        self._thread_lock = threading.Lock()
+        self._udp_thread = None
+        self._timeout_thread = None
+        self._udp_server_socket = None
+        self._pid_cache = None
+        self._pid_cache_expires = 0.0
+        self._did_snapshot_cache = {}
+        self._last_sensor_snapshot = {}
+        self._last_sensor_snapshot_expires = 0.0

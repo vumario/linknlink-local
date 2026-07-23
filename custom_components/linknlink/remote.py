@@ -1,6 +1,5 @@
 """Support for linknlink remotes."""
 import asyncio
-from base64 import b64encode
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import timedelta
@@ -12,8 +11,6 @@ from .vendor.linknlink.exceptions import (
     AuthorizationError,
     LinknLinkException,
     NetworkTimeoutError,
-    ReadError,
-    StorageError,
 )
 import voluptuous as vol
 
@@ -39,10 +36,10 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.storage import Store
-from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .helpers import data_packet
+from . import learn
 from .coordinator import LinknLinkCoordinator
 from .entity import LinknLinkEntity
 
@@ -122,6 +119,7 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
         self._storage_loaded = False
         self._codes = {}
         self._flags = defaultdict(int)
+        self._decoded_code_cache = {}
         self._lock = asyncio.Lock()
 
         self._attr_is_on = True
@@ -144,30 +142,64 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
         code_list = []
         for cmd in commands:
             if cmd.startswith("b64:"):
-                codes = [cmd[4:]]
+                source_codes = [cmd[4:]]
 
             else:
                 if device is None:
                     raise ValueError("You need to specify a device")
 
                 try:
-                    codes = self._codes[device][cmd]
+                    source_codes = self._codes[device][cmd]
                 except KeyError as err:
                     raise ValueError(f"Command not found: {repr(cmd)}") from err
 
-                if isinstance(codes, list):
-                    codes = codes[:]
+                if isinstance(source_codes, list):
+                    source_codes = source_codes[:]
                 else:
-                    codes = [codes]
+                    source_codes = [source_codes]
 
-            for idx, code in enumerate(codes):
+            codes = []
+            for code in source_codes:
                 try:
-                    codes[idx] = data_packet(code)
+                    cache_key = (
+                        None if device is None else str(device),
+                        cmd,
+                        str(code),
+                    )
+                    decoded = self._decoded_code_cache.get(cache_key)
+                    if decoded is None:
+                        decoded = data_packet(code)
+                        self._decoded_code_cache[cache_key] = decoded
+                    codes.append(decoded)
                 except ValueError as err:
                     raise ValueError(f"Invalid code: {repr(code)}") from err
 
             code_list.append(codes)
         return code_list
+
+    def _invalidate_decoded_cache(self, device: str | None = None, command: str | None = None) -> None:
+        """Invalidate decoded command cache entries."""
+        if device is None and command is None:
+            self._decoded_code_cache.clear()
+            return
+
+        remove = []
+        for cache_device, cache_command, _ in self._decoded_code_cache:
+            if device is not None and cache_device != str(device):
+                continue
+            if command is not None and cache_command != command:
+                continue
+            remove.append((cache_device, cache_command))
+
+        if not remove:
+            return
+
+        remove_set = set(remove)
+        self._decoded_code_cache = {
+            key: value
+            for key, value in self._decoded_code_cache.items()
+            if (key[0], key[1]) not in remove_set
+        }
 
     @callback
     def _get_codes(self):
@@ -205,6 +237,7 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
         # provide feedback if something fails.
         self._codes.update(await self._code_storage.async_load() or {})
         self._flags.update(await self._flag_storage.async_load() or {})
+        self._invalidate_decoded_cache()
         self._storage_loaded = True
 
     async def async_send_command(self, command: Iterable[str], **kwargs: Any) -> None:
@@ -312,6 +345,7 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
                     continue
 
                 self._codes.setdefault(subdevice, {}).update({command: code})
+                self._invalidate_decoded_cache(subdevice, command)
                 should_store = True
 
             if should_store:
@@ -336,20 +370,10 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
         )
 
         try:
-            start_time = dt_util.utcnow()
-            while (dt_util.utcnow() - start_time) < LEARNING_TIMEOUT:
-                await asyncio.sleep(1)
-                try:
-                    code = await device.async_request(device.api.check_data)
-                except (ReadError, StorageError):
-                    continue
-                return b64encode(code).decode("utf8")
-
-            raise TimeoutError(
-                "No infrared code received within "
-                f"{LEARNING_TIMEOUT.total_seconds()} seconds"
+            return await learn.async_learn_ir(
+                device,
+                timeout=LEARNING_TIMEOUT.total_seconds(),
             )
-
         finally:
             persistent_notification.async_dismiss(
                 self.hass, notification_id="learn_command"
@@ -374,32 +398,16 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
         )
 
         try:
-            start_time = dt_util.utcnow()
-            while (dt_util.utcnow() - start_time) < LEARNING_TIMEOUT:
-                await asyncio.sleep(1)
-                found = await device.async_request(device.api.check_frequency)
-                if found:
-                    break
-            else:
-                await device.async_request(device.api.cancel_sweep_frequency)
-                raise TimeoutError(
-                    "No radiofrequency found within "
-                    f"{LEARNING_TIMEOUT.total_seconds()} seconds"
-                )
-
+            await learn.async_sweep_rf(
+                device,
+                timeout=LEARNING_TIMEOUT.total_seconds(),
+            )
         finally:
             persistent_notification.async_dismiss(
                 self.hass, notification_id="sweep_frequency"
             )
 
         await asyncio.sleep(1)
-
-        try:
-            await device.async_request(device.api.find_rf_packet)
-
-        except (LinknLinkException, OSError) as err:
-            _LOGGER.debug("Failed to enter learning mode: %s", err)
-            raise
 
         persistent_notification.async_create(
             self.hass,
@@ -409,20 +417,10 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
         )
 
         try:
-            start_time = dt_util.utcnow()
-            while (dt_util.utcnow() - start_time) < LEARNING_TIMEOUT:
-                await asyncio.sleep(1)
-                try:
-                    code = await device.async_request(device.api.check_data)
-                except (ReadError, StorageError):
-                    continue
-                return b64encode(code).decode("utf8")
-
-            raise TimeoutError(
-                "No radiofrequency code received within "
-                f"{LEARNING_TIMEOUT.total_seconds()} seconds"
+            return await learn.async_learn_rf(
+                device,
+                timeout=LEARNING_TIMEOUT.total_seconds(),
             )
-
         finally:
             persistent_notification.async_dismiss(
                 self.hass, notification_id="learn_command"
@@ -457,6 +455,7 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
         for command in commands:
             try:
                 del codes[command]
+                self._invalidate_decoded_cache(subdevice, command)
             except KeyError:
                 cmds_not_found.append(command)
 
