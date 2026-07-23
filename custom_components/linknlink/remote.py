@@ -186,22 +186,18 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
             self._decoded_code_cache.clear()
             return
 
-        remove = []
-        for cache_device, cache_command, _ in self._decoded_code_cache.keys():
+        def should_remove(key: tuple[str | None, str, str]) -> bool:
+            cache_device, cache_command, _ = key
             if normalized_device is not None and cache_device != normalized_device:
-                continue
+                return False
             if command is not None and cache_command != command:
-                continue
-            remove.append((cache_device, cache_command))
+                return False
+            return True
 
-        if not remove:
-            return
-
-        remove_set = set(remove)
         self._decoded_code_cache = {
             key: value
             for key, value in self._decoded_code_cache.items()
-            if (key[0], key[1]) not in remove_set
+            if not should_remove(key)
         }
 
     @callback

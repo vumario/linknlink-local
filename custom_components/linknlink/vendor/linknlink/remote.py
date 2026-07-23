@@ -150,8 +150,10 @@ class eremote(Device):
     Port = 61212
     PID_CACHE_TTL = 30
     SENSOR_CACHE_TTL = 2
+    ERROR_SENSOR_CACHE_TTL = 0.5
     TIMEOUT_INTERVAL = 60
     LOOPBACK_BIND_IP = "127.0.0.1"
+    MAX_PORT_BIND_ATTEMPTS = 100
 
     def __init__(self, *args, **kwargs) -> None:
         """Initialize an eRemote device."""
@@ -196,17 +198,25 @@ class eremote(Device):
         """Start a UDP server for callback events."""
         udp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         bind_ip = self._get_local_interface_ip()
-        while True:
+        attempts = 0
+        while attempts < self.MAX_PORT_BIND_ATTEMPTS:
+            attempts += 1
             server_address = (bind_ip, self.Port)
             try:
                 udp_server_socket.bind(server_address)
                 break
             except OSError as err:
                 if err.errno == socket.errno.EADDRINUSE:
+                    if self.Port >= 65535:
+                        udp_server_socket.close()
+                        raise
                     self.Port += 1
                     continue
                 udp_server_socket.close()
                 raise
+        else:
+            udp_server_socket.close()
+            raise OSError("Failed to bind UDP callback server after retries")
 
         udp_server_socket.settimeout(1)
         self._udp_server_socket = udp_server_socket
@@ -342,7 +352,7 @@ class eremote(Device):
                         json_object = json.loads(json_string)
                     except Exception:
                         self._did_snapshot_cache[did_key] = (
-                            now + self.SENSOR_CACHE_TTL,
+                            now + self.ERROR_SENSOR_CACHE_TTL,
                             {},
                         )
                         continue

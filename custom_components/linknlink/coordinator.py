@@ -25,6 +25,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import DEFAULT_PORT, DOMAIN, get_domains
 
 _LOGGER = logging.getLogger(__name__)
+STALE_DATA_THRESHOLD_MULTIPLIER = 2
 
 
 class LinknLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -155,7 +156,11 @@ class LinknLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.debug("Sensor update failed for %s: %s", self.api.host[0], err)
                 if self._last_sensor_data and self._last_sensor_data_at is not None:
                     stale_for = now - self._last_sensor_data_at
-                    if stale_for > self.update_interval.total_seconds() * 2:
+                    if (
+                        stale_for
+                        > self.update_interval.total_seconds()
+                        * STALE_DATA_THRESHOLD_MULTIPLIER
+                    ):
                         _LOGGER.warning(
                             "Using stale sensor data for %s (age %.1fs)",
                             self.api.host[0],
