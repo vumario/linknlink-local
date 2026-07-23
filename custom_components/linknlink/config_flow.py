@@ -100,7 +100,7 @@ class LinknlinkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if device.type not in DEVICE_TYPES:
             return self.async_abort(reason="not_supported")
 
-        await self._set_device(device)
+        await self.async_set_device(device)
         return await self.async_step_auth()
 
     async def async_step_user(
@@ -436,6 +436,10 @@ class ControlledDeviceSubentryFlowHandler(ConfigSubentryFlow):
         """Store the learned code or report the failure."""
         task = self._learn_task
         self._learn_task = None
+        if task is None or self._pending_command is None:
+            _LOGGER.error("Learning result reached without pending command state")
+            self._pending_command = None
+            return await self.async_step_learn(errors={"base": "learn_failed"})
         try:
             code = task.result()
         except TimeoutError:
