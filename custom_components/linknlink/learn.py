@@ -29,6 +29,8 @@ def _next_poll_interval(
 
     We poll at ``base`` normally, then back off up to ``maximum`` as the
     deadline approaches to reduce repeated I/O in timeout-prone paths.
+    ``MIN_POLL_MARGIN`` is subtracted near the deadline so the loop can
+    finish before timeout checks and avoid overshooting the deadline.
     """
     remaining = max(0.0, deadline - now)
     if remaining <= base:

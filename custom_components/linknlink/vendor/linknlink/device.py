@@ -19,6 +19,7 @@ from .const import (
 from .protocol import Datetime
 
 HelloResponse = t.Tuple[int, t.Tuple[str, int], str, str, bool]
+ERROR_CODE_NETWORK_TIMEOUT = -4000
 
 
 def scan(
@@ -210,7 +211,7 @@ class Device:
 
         except StopIteration as err:
             raise e.NetworkTimeoutError(
-                -4000,
+                ERROR_CODE_NETWORK_TIMEOUT,
                 "Network timeout",
                 f"No response received within {self.timeout}s",
             ) from err
@@ -306,7 +307,7 @@ class Device:
                 if time_left <= 0:
                     self._close_socket()
                     raise e.NetworkTimeoutError(
-                        -4000,
+                        ERROR_CODE_NETWORK_TIMEOUT,
                         "Network timeout",
                         f"No response received within {timeout}s",
                     )
@@ -321,7 +322,7 @@ class Device:
                     if (time.time() - start_time) > timeout:
                         self._close_socket()
                         raise e.NetworkTimeoutError(
-                            -4000,
+                            ERROR_CODE_NETWORK_TIMEOUT,
                             "Network timeout",
                             f"No response received within {timeout}s",
                         ) from err

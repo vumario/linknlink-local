@@ -140,6 +140,7 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
         sublist contains two codes that must be sent alternately with
         each call.
         """
+        normalized_device = None if device is None else str(device)
         code_list = []
         for cmd in commands:
             if cmd.startswith("b64:"):
@@ -163,7 +164,7 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
             for code in source_codes:
                 try:
                     cache_key = (
-                        None if device is None else str(device),
+                        normalized_device,
                         cmd,
                         str(code),
                     )
@@ -180,13 +181,14 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
 
     def _invalidate_decoded_cache(self, device: str | None = None, command: str | None = None) -> None:
         """Invalidate decoded command cache entries."""
+        normalized_device = None if device is None else str(device)
         if device is None and command is None:
             self._decoded_code_cache.clear()
             return
 
         remove = []
         for cache_device, cache_command, _ in self._decoded_code_cache.keys():
-            if device is not None and cache_device != str(device):
+            if normalized_device is not None and cache_device != normalized_device:
                 continue
             if command is not None and cache_command != command:
                 continue

@@ -195,7 +195,7 @@ class eremote(Device):
     def startUdpServer(self):
         """Start a UDP server for callback events."""
         udp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        bind_ip = self._get_bind_ip()
+        bind_ip = self._get_local_interface_ip()
         while True:
             server_address = (bind_ip, self.Port)
             try:
@@ -251,7 +251,7 @@ class eremote(Device):
             except Exception as e:
                 print(e)
 
-    def _get_bind_ip(self) -> str:
+    def _get_local_interface_ip(self) -> str:
         """Return the local interface IP used to reach this device."""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
