@@ -351,25 +351,22 @@ def test_async_step_learn_result_handles_missing_pending_command():
     )
 
     flow = module.ControlledDeviceSubentryFlowHandler()
-    loop = asyncio.new_event_loop()
-    try:
-        asyncio.set_event_loop(loop)
-        flow._learn_task = loop.create_future()
+    seen = {}
+
+    async def run_test():
+        flow._learn_task = asyncio.get_running_loop().create_future()
         flow._learn_task.set_result("code")
         flow._pending_command = None
         flow._commands = {}
-        seen = {}
 
         async def async_step_learn(user_input=None, errors=None):
             seen["errors"] = errors
             return {"type": "form", "errors": errors}
 
         flow.async_step_learn = async_step_learn
+        return await flow.async_step_learn_result()
 
-        result = loop.run_until_complete(flow.async_step_learn_result())
-    finally:
-        asyncio.set_event_loop(None)
-        loop.close()
+    result = asyncio.run(run_test())
 
     assert result == {"type": "form", "errors": {"base": "learn_failed"}}
     assert seen["errors"] == {"base": "learn_failed"}
