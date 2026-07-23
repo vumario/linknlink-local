@@ -151,6 +151,5 @@ class LinknLinkCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.error("Failed to execute function: %s", e)
             except (NetworkTimeoutError, OSError, LinknLinkException) as err:
                 _LOGGER.debug("Sensor update failed for %s: %s", self.api.host[0], err)
-                if self._last_sensor_data:
-                    return dict(self._last_sensor_data)
+                return dict(self._last_sensor_data)
         return {}

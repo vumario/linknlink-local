@@ -15,6 +15,7 @@ from linknlink.exceptions import ReadError, StorageError
 LEARNING_TIMEOUT = 30.0
 POLL_INTERVAL = 1.0
 MAX_POLL_INTERVAL = 2.0
+BACKOFF_WINDOW = 5.0
 
 
 def _next_poll_interval(
@@ -23,11 +24,15 @@ def _next_poll_interval(
     base: float,
     maximum: float,
 ) -> float:
-    """Return the next sleep interval with light adaptive backoff."""
+    """Return polling delay with adaptive backoff near timeout.
+
+    We poll at ``base`` normally, then back off up to ``maximum`` as the
+    deadline approaches to reduce repeated I/O in timeout-prone paths.
+    """
     remaining = max(0.0, deadline - now)
     if remaining <= base:
         return remaining
-    if remaining < 5:
+    if remaining < BACKOFF_WINDOW:
         return min(maximum, base * 2)
     return base
 

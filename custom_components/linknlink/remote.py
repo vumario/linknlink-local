@@ -184,7 +184,7 @@ class LinknLinkRemote(LinknLinkEntity, RemoteEntity, RestoreEntity):
             return
 
         remove = []
-        for cache_device, cache_command, _ in self._decoded_code_cache:
+        for cache_device, cache_command, _ in self._decoded_code_cache.keys():
             if device is not None and cache_device != str(device):
                 continue
             if command is not None and cache_command != command:

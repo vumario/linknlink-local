@@ -150,6 +150,22 @@ class eremote(Device):
     Port = 61212
     PID_CACHE_TTL = 30
     SENSOR_CACHE_TTL = 2
+
+    def __init__(self, *args, **kwargs) -> None:
+        """Initialize an eRemote device."""
+        super().__init__(*args, **kwargs)
+        self.UdpFlag = False
+        self.Port = 61212
+        self._stop_event = threading.Event()
+        self._thread_lock = threading.Lock()
+        self._udp_thread = None
+        self._timeout_thread = None
+        self._udp_server_socket = None
+        self._pid_cache = None
+        self._pid_cache_expires = 0.0
+        self._did_snapshot_cache = {}
+        self._last_sensor_snapshot = {}
+        self._last_sensor_snapshot_expires = 0.0
     
     def _send(self, command: int, data: bytes = b"") -> bytes:
         """Send a packet to the device."""
@@ -177,8 +193,9 @@ class eremote(Device):
     def startUdpServer(self):
         """Start a UDP server for callback events."""
         udp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        bind_ip = self._get_bind_ip()
         while True:
-            server_address = ("", self.Port)
+            server_address = (bind_ip, self.Port)
             try:
                 udp_server_socket.bind(server_address)
                 break
@@ -228,6 +245,15 @@ class eremote(Device):
                 resp = self.send_packet(0x6A, packet)
             except Exception as e:
                 print(e)
+
+    def _get_bind_ip(self) -> str:
+        """Return the local interface IP used to reach this device."""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                probe.connect((self.host[0], self.host[1]))
+                return probe.getsockname()[0]
+        except OSError:
+            return "0.0.0.0"
 
     def _ensure_background_workers(self) -> None:
         """Ensure UDP workers are running once."""
@@ -326,9 +352,6 @@ class eremote(Device):
             self._last_sensor_snapshot = dict(big_dict)
             self._last_sensor_snapshot_expires = now + self.SENSOR_CACHE_TTL
             return big_dict
-
-        if now < self._last_sensor_snapshot_expires:
-            return dict(self._last_sensor_snapshot)
         return big_dict
 
     def __del__(self) -> None:
@@ -382,18 +405,3 @@ class eremote(Device):
     def check_data(self) -> bytes:
         """Return the last captured code."""
         return self._send(0x4)
-    def __init__(self, *args, **kwargs) -> None:
-        """Initialize an eRemote device."""
-        super().__init__(*args, **kwargs)
-        self.UdpFlag = False
-        self.Port = 61212
-        self._stop_event = threading.Event()
-        self._thread_lock = threading.Lock()
-        self._udp_thread = None
-        self._timeout_thread = None
-        self._udp_server_socket = None
-        self._pid_cache = None
-        self._pid_cache_expires = 0.0
-        self._did_snapshot_cache = {}
-        self._last_sensor_snapshot = {}
-        self._last_sensor_snapshot_expires = 0.0
