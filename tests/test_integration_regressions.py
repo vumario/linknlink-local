@@ -106,7 +106,7 @@ def _install_common_homeassistant_stubs() -> None:
     _new_module(
         "homeassistant.helpers",
         config_validation=SimpleNamespace(
-            positive_int=int,
+            positive_int=_positive_int,
             ensure_list=lambda value: value if isinstance(value, list) else [value],
             string=lambda value: str(value),
             boolean=lambda value: bool(value),
@@ -115,7 +115,7 @@ def _install_common_homeassistant_stubs() -> None:
     )
     _new_module(
         "homeassistant.helpers.config_validation",
-        positive_int=int,
+        positive_int=_positive_int,
         ensure_list=lambda value: value if isinstance(value, list) else [value],
         string=lambda value: str(value),
         boolean=lambda value: bool(value),
@@ -141,6 +141,14 @@ def _load_module(module_name: str, file_name: str, predefs: dict | None = None):
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def _positive_int(value):
+    """Validate that a value is a positive integer."""
+    value = int(value)
+    if value <= 0:
+        raise ValueError("value must be positive")
+    return value
 
 
 def test_dhcp_flow_calls_async_set_device():
@@ -423,7 +431,10 @@ def test_send_command_initializes_missing_toggle_flags():
     _new_module("homeassistant.helpers.restore_state", RestoreEntity=type("RestoreEntity", (), {}))
     _new_module("homeassistant.helpers.storage", Store=object)
     _new_module("custom_components.linknlink.const", DOMAIN="linknlink")
-    _new_module("custom_components.linknlink.helpers", data_packet=lambda code: code.encode())
+    _new_module(
+        "custom_components.linknlink.helpers",
+        data_packet=lambda code: code if isinstance(code, bytes) else code.encode(),
+    )
     _new_module("custom_components.linknlink.learn")
     _new_module("custom_components.linknlink.coordinator", LinknLinkCoordinator=object)
 
@@ -474,7 +485,7 @@ def test_send_command_initializes_missing_toggle_flags():
     coordinator = FakeCoordinator()
     remote = module.LinknLinkRemote(coordinator, FakeStore(), FakeStore())
     remote._storage_loaded = True
-    remote._codes = {"tv": {"power": ["first", "second"]}}
+    remote._codes = {"tv": {"power": ["Zmlyc3Q=", "c2Vjb25k"]}}
     remote._flags = {}
 
     asyncio.run(
@@ -483,6 +494,6 @@ def test_send_command_initializes_missing_toggle_flags():
         )
     )
 
-    assert coordinator.sent == [b"first"]
+    assert coordinator.sent == [b"Zmlyc3Q="]
     assert remote._flags["tv"] == 1
     assert remote._flag_storage.saved == [({"tv": 1}, module.FLAG_SAVE_DELAY)]
