@@ -15,7 +15,6 @@ from linknlink.exceptions import (
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.components import dhcp
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigSubentryFlow,
@@ -25,6 +24,7 @@ from homeassistant.const import CONF_HOST, CONF_MAC, CONF_NAME, CONF_TIMEOUT, CO
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import AbortFlow, FlowResult
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from . import learn
 from .const import (
@@ -83,7 +83,7 @@ class linknlinkFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             "host": device.host[0],
         }
 
-    async def async_step_dhcp(self, discovery_info: dhcp.DhcpServiceInfo) -> FlowResult:
+    async def async_step_dhcp(self, discovery_info: DhcpServiceInfo) -> FlowResult:
         """Handle dhcp discovery."""
         host = discovery_info.ip
         unique_id = discovery_info.macaddress.lower().replace(":", "")
