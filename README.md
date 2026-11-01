@@ -7,7 +7,7 @@ We have moved the official repository from the former developer's [repository](h
 The LinknLink Local integration allows you to control and monitor LinknLink universal remotes, smart plugs, power strips, switches and sensors. The following devices are supported:
 
 - Sensors: `ehub`, `eTHS`, `eMotion`
-- Universal Remotes: `eHub`
+- Universal Remotes: `eHub`, `eHome HA RF`
 
 ## Managing IR/RF devices from the UI (Home Assistant 2026.7+)
 

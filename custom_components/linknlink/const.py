@@ -18,12 +18,12 @@ DOMAINS_AND_TYPES: dict[str, set[str]] = {
     # Platform.SENSOR: {"EHUB", "ETHS", "EREMOTE"},
     # Platform.BINARY_SENSOR: {"EHUB", "EMOTION", "EREMOTE"},
     # Platform.BUTTON: {"EREMOTE"},
-    Platform.REMOTE: {"EHUB", "EREMOTE"},
+    Platform.REMOTE: {"EHUB", "EHOME_RF_HA", "EREMOTE"},
     Platform.SENSOR: {"EHUB", "ETHS"},
     Platform.BINARY_SENSOR: {"EHUB", "EMOTION"},
-    Platform.BUTTON: {"EHUB", "EREMOTE"},
+    Platform.BUTTON: {"EHUB", "EHOME_RF_HA", "EREMOTE"},
     PLATFORM_INFRARED: {"EHUB", "EREMOTE"},
-    PLATFORM_RADIO_FREQUENCY: {"EHUB", "EREMOTE"},
+    PLATFORM_RADIO_FREQUENCY: {"EHUB", "EHOME_RF_HA", "EREMOTE"},
 }
 DEVICE_TYPES = set.union(*DOMAINS_AND_TYPES.values())
 

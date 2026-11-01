@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_MAC
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.config_entries import ConfigEntry # type: ignore
+from homeassistant.const import CONF_MAC # type: ignore
+from homeassistant.core import HomeAssistant # type: ignore
+from homeassistant.exceptions import ConfigEntryNotReady # type: ignore
 
 from .const import DOMAIN, get_domains
 from .coordinator import LinknLinkCoordinator
